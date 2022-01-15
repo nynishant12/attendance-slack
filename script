@@ -1,0 +1,114 @@
+function doPost(request) {
+  
+  var params = request.parameters;
+
+  // Make sure that the request came from our slack integration.
+  if (params.token == "[slack_token]") {
+    
+    // Get the spreadsheet
+    var sheets = SpreadsheetApp.openById('[sheet_ID]');
+
+    // Check command name. If it starts with add, then add to sheet, if it's list topics, then respond with list of topics.
+    var text = String(params.text);
+    if (text.match(/^add:/i)) {
+      addNewItemToSheet(sheets, params);
+    } else if (text.match(/^list topics/i)) {
+      listSheetNames(sheets, params.channel_name)
+    }
+    
+  // If the token does not match then do nothing
+  } else {
+    return;
+  }
+}
+
+function addNewItemToSheet(sheets, params) {
+  // PROCESS TEXT FROM MESSAGE
+  var textRaw = String(params.text).replace(/^\s*add\s*:*\s*/gi,'');
+  var text = textRaw.split(/\s*;\s*/g);
+
+  // FALL BACK TO DEFAULT TEXT IF NO UPDATE PROVIDED
+  var sheetName   = text[0] || "";
+  var date       = text[1] || "";
+  var time      = text[2] || "";
+  var location = text[3] || "";
+    
+  var sheet = sheets.getSheetByName(sheetName)
+  var nR = getNextRow(sheet) + 1;
+
+  // RECORD USER NAME IN SPREADSHEET
+  sheet.getRange('D:D').getCell(nR,1).setValue(params.user_name);
+
+  // RECORD UPDATE INFORMATION INTO SPREADSHEET
+  sheet.getRange('A:A').getCell(nR,1).setValue(date);
+  sheet.getRange('B:B').getCell(nR,1).setValue(time);
+  sheet.getRange('C:C').getCell(nR,1).setValue(location);;
+
+  var channel = "check-in_out";
+
+  postResponse(channel,params.user_name, sheetName, date, time, location);    
+}
+
+function listSheetNames(sheets, channelName) {
+  var sheetNames = sheets.getSheets().map(function(sheet) { return sheet.getName() });
+  postTopicNamesResponse(channelName, sheetNames.slice(1));
+}
+
+function getNextRow(sheet) {
+  var titles = sheet.getRange("A:A").getValues();
+  for (i in titles) {
+    if(titles[i][0] == "") {
+      return Number(i);
+      break;
+    }
+  }
+}
+
+function postResponse(channel, userName, topic, date, time, location) {
+
+  var payload = {
+    "channel": "#" + channel,
+    "username": "New attendance added to List",
+    "icon_emoji": ":grin:",
+    "link_names": 1,
+    "attachments":[
+       {
+          "fallback": "This is an update from a Slackbot integrated into your organization. Your client chose not to show the attachment.",
+          "pretext": "@" + userName + " added a new item to the attendance",
+          "mrkdwn_in": ["pretext"],
+          "color": "#76E9CD",
+          "fields":[
+             {
+                "title":"Topic",
+                "value": topic,
+                "short":false
+             },
+             {
+                "title":"Date",
+                "value": date,
+                "short":false
+             },
+             {
+                "title":"Time",
+                "value": time,
+                "short": false
+             },
+             {
+                "title":"Location",
+                "value": location,
+                "short": false
+             }
+          ]
+       }
+    ]
+  };
+
+  var url = '[slack_webhook]';
+  var options = {
+    'method': 'post',
+    'payload': JSON.stringify(payload)
+  };
+
+  return UrlFetchApp.fetch(url,options);
+}
+
